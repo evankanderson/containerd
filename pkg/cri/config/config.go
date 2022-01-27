@@ -171,6 +171,8 @@ type Registry struct {
 	// ConfigPath is a path to the root directory containing registry-specific
 	// configurations.
 	// If ConfigPath is set, the rest of the registry specific options are ignored.
+	// If no registry-specific options are set, ConfigPath defaults to
+	// "/etc/containerd/certs.d:/etc/docker/certs.d" for compatibility with Docker.
 	ConfigPath string `toml:"config_path" json:"configPath"`
 	// Mirrors are namespace to mirror mapping for all namespaces.
 	// This option will not be used when ConfigPath is provided.
@@ -437,6 +439,17 @@ func ValidatePluginConfig(ctx context.Context, c *PluginConfig) error {
 			c.Registry.Configs[endpoint] = config
 		}
 		log.G(ctx).Warning("`auths` is deprecated, please use `configs` instead")
+	}
+
+	if len(c.Registry.Mirrors) == 0 && !hasDeprecatedTLS {
+		// No old-style configuration, default to docker-compatible defaults
+		// See https://github.com/containerd/containerd/issues/6485
+		//
+		// We can move this to `DefaultConfig` in config_unix once the `mirrors`
+		// and `tls` settings are fully retired.
+		if !useConfigPath {
+			c.Registry.ConfigPath = "/etc/containerd/certs.d:/etc/docker/certs.d"
+		}
 	}
 
 	// Validation for stream_idle_timeout
