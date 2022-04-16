@@ -60,9 +60,6 @@ func TestValidateConfig(t *testing.T) {
 						},
 					},
 				},
-				Registry: Registry{
-					ConfigPath: "/etc/containerd/certs.d:/etc/docker/certs.d",
-				},
 			},
 		},
 		"both untrusted_workload_runtime and runtime[untrusted]": {
@@ -104,9 +101,6 @@ func TestValidateConfig(t *testing.T) {
 						},
 					},
 				},
-				Registry: Registry{
-					ConfigPath: "/etc/containerd/certs.d:/etc/docker/certs.d",
-				},
 			},
 		},
 		"no default_runtime_name": {
@@ -142,9 +136,6 @@ func TestValidateConfig(t *testing.T) {
 							Type: plugin.RuntimeLinuxV1,
 						},
 					},
-				},
-				Registry: Registry{
-					ConfigPath: "/etc/containerd/certs.d:/etc/docker/certs.d",
 				},
 			},
 		},
@@ -184,9 +175,6 @@ func TestValidateConfig(t *testing.T) {
 						},
 					},
 				},
-				Registry: Registry{
-					ConfigPath: "/etc/containerd/certs.d:/etc/docker/certs.d",
-				},
 			},
 		},
 		"no_pivot for v2 runtime": {
@@ -225,9 +213,6 @@ func TestValidateConfig(t *testing.T) {
 						},
 					},
 				},
-				Registry: Registry{
-					ConfigPath: "/etc/containerd/certs.d:/etc/docker/certs.d",
-				},
 			},
 		},
 		"deprecated runtime_engine for v2 runtime": {
@@ -265,9 +250,6 @@ func TestValidateConfig(t *testing.T) {
 							Type: plugin.RuntimeLinuxV1,
 						},
 					},
-				},
-				Registry: Registry{
-					ConfigPath: "/etc/containerd/certs.d:/etc/docker/certs.d",
 				},
 			},
 		},
@@ -311,7 +293,6 @@ func TestValidateConfig(t *testing.T) {
 					},
 				},
 				Registry: Registry{
-					ConfigPath: "/etc/containerd/certs.d:/etc/docker/certs.d",
 					Configs: map[string]RegistryConfig{
 						"gcr.io": {
 							Auth: &AuthConfig{

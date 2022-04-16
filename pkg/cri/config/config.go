@@ -441,17 +441,6 @@ func ValidatePluginConfig(ctx context.Context, c *PluginConfig) error {
 		log.G(ctx).Warning("`auths` is deprecated, please use `configs` instead")
 	}
 
-	if len(c.Registry.Mirrors) == 0 && !hasDeprecatedTLS {
-		// No old-style configuration, default to docker-compatible defaults
-		// See https://github.com/containerd/containerd/issues/6485
-		//
-		// We can move this to `DefaultConfig` in config_unix once the `mirrors`
-		// and `tls` settings are fully retired.
-		if !useConfigPath {
-			c.Registry.ConfigPath = "/etc/containerd/certs.d:/etc/docker/certs.d"
-		}
-	}
-
 	// Validation for stream_idle_timeout
 	if c.StreamIdleTimeout != "" {
 		if _, err := time.ParseDuration(c.StreamIdleTimeout); err != nil {
