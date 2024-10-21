@@ -20,12 +20,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/containerd/containerd"
-	"github.com/containerd/containerd/containers"
-	"github.com/containerd/containerd/diff"
-	"github.com/containerd/containerd/errdefs"
+	containerd "github.com/containerd/containerd/v2/client"
+	"github.com/containerd/containerd/v2/core/containers"
+	"github.com/containerd/containerd/v2/core/diff"
+	"github.com/containerd/errdefs"
 	"github.com/containerd/imgcrypt"
-	"github.com/containerd/typeurl"
+	"github.com/containerd/typeurl/v2"
 
 	encconfig "github.com/containers/ocicrypt/config"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -34,19 +34,17 @@ import (
 // WithDecryptedUnpack allows to pass parameters the 'layertool' needs to the applier
 func WithDecryptedUnpack(data *imgcrypt.Payload) diff.ApplyOpt {
 	return func(_ context.Context, desc ocispec.Descriptor, c *diff.ApplyConfig) error {
-		if c.ProcessorPayloads == nil {
-			c.ProcessorPayloads = make(anyMap)
-		}
 		data.Descriptor = desc
-		any, err := typeurl.MarshalAny(data)
+		anything, err := typeurl.MarshalAny(data)
 		if err != nil {
 			return fmt.Errorf("failed to marshal payload: %w", err)
 		}
 
-		pbany := fromAny(any)
-
+		if c.ProcessorPayloads == nil {
+			c.ProcessorPayloads = make(map[string]typeurl.Any, len(imgcrypt.PayloadToolIDs))
+		}
 		for _, id := range imgcrypt.PayloadToolIDs {
-			c.ProcessorPayloads[id] = pbany
+			c.ProcessorPayloads[id] = anything
 		}
 		return nil
 	}

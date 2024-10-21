@@ -20,10 +20,11 @@ import (
 	"runtime"
 	"testing"
 
-	. "github.com/containerd/containerd"
-	"github.com/containerd/containerd/errdefs"
-	"github.com/containerd/containerd/images"
-	"github.com/containerd/containerd/leases"
+	. "github.com/containerd/containerd/v2/client"
+	"github.com/containerd/containerd/v2/core/images"
+	"github.com/containerd/containerd/v2/core/leases"
+	imagelist "github.com/containerd/containerd/v2/integration/images"
+	"github.com/containerd/errdefs"
 	"github.com/opencontainers/image-spec/identity"
 )
 
@@ -55,7 +56,7 @@ func TestLeaseResources(t *testing.T) {
 	defer ls.Delete(ctx, l, leases.SynchronousDelete)
 
 	// step 1: download image
-	imageName := "k8s.gcr.io/pause:3.6"
+	imageName := imagelist.Get(imagelist.Pause)
 
 	image, err := client.Pull(ctx, imageName, WithPullUnpack, WithPullSnapshotter(snapshotterName))
 	if err != nil {

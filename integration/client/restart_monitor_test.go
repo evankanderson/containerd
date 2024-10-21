@@ -19,25 +19,28 @@ package client
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
 
-	. "github.com/containerd/containerd"
-	"github.com/containerd/containerd/containers"
-	"github.com/containerd/containerd/oci"
-	"github.com/containerd/containerd/pkg/testutil"
-	srvconfig "github.com/containerd/containerd/services/server/config"
-	"github.com/containerd/containerd/sys"
-	exec "golang.org/x/sys/execabs"
+	eventtypes "github.com/containerd/containerd/api/events"
+	. "github.com/containerd/containerd/v2/client"
+	srvconfig "github.com/containerd/containerd/v2/cmd/containerd/server/config"
+	"github.com/containerd/containerd/v2/core/runtime/restart"
+	"github.com/containerd/containerd/v2/pkg/oci"
+	"github.com/containerd/containerd/v2/pkg/testutil"
+	"github.com/containerd/typeurl/v2"
+	"github.com/stretchr/testify/require"
 )
 
-// the following nolint is for shutting up gometalinter on non-linux.
-// nolint: unused
 func newDaemonWithConfig(t *testing.T, configTOML string) (*Client, *daemon, func()) {
 	if testing.Short() {
 		t.Skip()
@@ -56,7 +59,7 @@ func newDaemonWithConfig(t *testing.T, configTOML string) (*Client, *daemon, fun
 		t.Fatal(err)
 	}
 
-	if err := srvconfig.LoadConfig(configTOMLFile, &configTOMLDecoded); err != nil {
+	if err := srvconfig.LoadConfig(context.TODO(), configTOMLFile, &configTOMLDecoded); err != nil {
 		t.Fatal(err)
 	}
 
@@ -102,7 +105,7 @@ func newDaemonWithConfig(t *testing.T, configTOML string) (*Client, *daemon, fun
 				t.Errorf("failed to wait for: %v", err)
 			}
 		}
-		if err := sys.ForceRemoveAll(tempDir); err != nil {
+		if err := forceRemoveAll(tempDir); err != nil {
 			t.Errorf("failed to remove %s: %v", tempDir, err)
 		}
 		if t.Failed() {
@@ -118,10 +121,9 @@ func newDaemonWithConfig(t *testing.T, configTOML string) (*Client, *daemon, fun
 // with the restart monitor service plugin
 func TestRestartMonitor(t *testing.T) {
 	const (
-		interval = 10 * time.Second
-		epsilon  = 1 * time.Second
-		count    = 20
+		interval = 5 * time.Second
 	)
+
 	configTOML := fmt.Sprintf(`
 version = 2
 [plugins]
@@ -131,13 +133,39 @@ version = 2
 	client, _, cleanup := newDaemonWithConfig(t, configTOML)
 	defer cleanup()
 
+	ctx, cancel := testContext(t)
+	defer cancel()
+
+	_, err := client.Pull(ctx, testImage, WithPullUnpack)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("Always", func(t *testing.T) {
+		testRestartMonitorAlways(t, client, interval)
+	})
+	t.Run("Paused Task", func(t *testing.T) {
+		testRestartMonitorPausedTaskWithAlways(t, client, interval)
+	})
+	t.Run("Failure Policy", func(t *testing.T) {
+		testRestartMonitorWithOnFailurePolicy(t, client, interval)
+	})
+}
+
+// testRestartMonitorAlways restarts its container always.
+func testRestartMonitorAlways(t *testing.T, client *Client, interval time.Duration) {
+	const (
+		epsilon = 1 * time.Second
+		count   = 20
+	)
+
 	var (
 		ctx, cancel = testContext(t)
-		id          = t.Name()
+		id          = strings.ReplaceAll(t.Name(), "/", "_")
 	)
 	defer cancel()
 
-	image, err := client.Pull(ctx, testImage, WithPullUnpack)
+	image, err := client.GetImage(ctx, testImage)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +176,7 @@ version = 2
 			oci.WithImageConfig(image),
 			longCommand,
 		),
-		withRestartStatus(Running),
+		restart.WithStatus(Running),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -229,14 +257,177 @@ version = 2
 	t.Logf("%v: the task was restarted since %v", time.Now(), lastCheck)
 }
 
-// withRestartStatus is a copy of "github.com/containerd/containerd/runtime/restart".WithStatus.
-// This copy is needed because `go test` refuses circular imports.
-func withRestartStatus(status ProcessStatus) func(context.Context, *Client, *containers.Container) error {
-	return func(_ context.Context, _ *Client, c *containers.Container) error {
-		if c.Labels == nil {
-			c.Labels = make(map[string]string)
-		}
-		c.Labels["containerd.io/restart.status"] = string(status)
-		return nil
+func testRestartMonitorPausedTaskWithAlways(t *testing.T, client *Client, interval time.Duration) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Pause task is not supported on Windows")
 	}
+
+	var (
+		ctx, cancel = testContext(t)
+		id          = strings.ReplaceAll(t.Name(), "/", "_")
+	)
+	defer cancel()
+
+	image, err := client.GetImage(ctx, testImage)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	container, err := client.NewContainer(ctx, id,
+		WithNewSnapshot(id, image),
+		WithNewSpec(
+			oci.WithImageConfig(image),
+			longCommand,
+		),
+		restart.WithStatus(Running),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := container.Delete(ctx, WithSnapshotCleanup); err != nil {
+			t.Logf("failed to delete container: %v", err)
+		}
+	}()
+
+	task, err := container.NewTask(ctx, empty())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if _, err := task.Delete(ctx, WithProcessKill); err != nil {
+			t.Logf("failed to delete task: %v", err)
+		}
+	}()
+
+	if err := task.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	statusC, err := task.Wait(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Log("pause the task")
+	require.NoError(t, task.Pause(ctx))
+	defer func() {
+		require.NoError(t, task.Resume(ctx))
+	}()
+
+	select {
+	case <-statusC:
+		t.Fatal("the paused task is killed")
+	case <-time.After(30 * time.Second):
+	}
+
+	status, err := task.Status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Status != Paused {
+		t.Fatalf("the paused task's status is changed to %s", status.Status)
+	}
+}
+
+// testRestartMonitorWithOnFailurePolicy restarts its container with `on-failure:1`
+func testRestartMonitorWithOnFailurePolicy(t *testing.T, client *Client, interval time.Duration) {
+	var (
+		ctx, cancel = testContext(t)
+		id          = strings.ReplaceAll(t.Name(), "/", "_")
+	)
+	defer cancel()
+
+	image, err := client.GetImage(ctx, testImage)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	policy, _ := restart.NewPolicy("on-failure:1")
+	container, err := client.NewContainer(ctx, id,
+		WithNewSnapshot(id, image),
+		WithNewSpec(
+			oci.WithImageConfig(image),
+			// always exited with 1
+			withExitStatus(1),
+		),
+		restart.WithStatus(Running),
+		restart.WithPolicy(policy),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := container.Delete(ctx, WithSnapshotCleanup); err != nil {
+			t.Logf("failed to delete container: %v", err)
+		}
+	}()
+
+	task, err := container.NewTask(ctx, empty())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if _, err := task.Delete(ctx, WithProcessKill); err != nil {
+			t.Logf("failed to delete task: %v", err)
+		}
+	}()
+
+	if err := task.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	statusCh, err := task.Wait(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	eventCh, eventErrCh := client.Subscribe(ctx, `topic=="/tasks/create"`)
+
+	select {
+	case <-statusCh:
+	case <-time.After(30 * time.Second):
+		t.Fatal("should receive exit event in time")
+	}
+
+	select {
+	case e := <-eventCh:
+		cid, err := convertTaskCreateEvent(e.Event)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cid != id {
+			t.Fatalf("expected task id = %s, but got %s", id, cid)
+		}
+	case err := <-eventErrCh:
+		t.Fatalf("unexpected error from event channel: %v", err)
+	case <-time.After(1 * time.Minute):
+		t.Fatal("should receive create event in time")
+	}
+
+	labels, err := container.Labels(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restartCount, _ := strconv.Atoi(labels[restart.CountLabel])
+	if restartCount != 1 {
+		t.Fatalf("expected restart count to be 1, got %d", restartCount)
+	}
+}
+
+func convertTaskCreateEvent(e typeurl.Any) (string, error) {
+	id := ""
+
+	evt, err := typeurl.UnmarshalAny(e)
+	if err != nil {
+		return "", fmt.Errorf("failed to unmarshalany: %w", err)
+	}
+
+	switch e := evt.(type) {
+	case *eventtypes.TaskCreate:
+		id = e.ContainerID
+	default:
+		return "", errors.New("unsupported event")
+	}
+	return id, nil
 }

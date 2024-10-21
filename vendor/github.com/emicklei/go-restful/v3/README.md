@@ -79,11 +79,12 @@ func (u UserResource) findUser(request *restful.Request, response *restful.Respo
 - Content encoding (gzip,deflate) of request and response payloads
 - Automatic responses on OPTIONS (using a filter)
 - Automatic CORS request handling (using a filter)
-- API declaration for Swagger UI ([go-restful-openapi](https://github.com/emicklei/go-restful-openapi), see [go-restful-swagger12](https://github.com/emicklei/go-restful-swagger12))
+- API declaration for Swagger UI ([go-restful-openapi](https://github.com/emicklei/go-restful-openapi))
 - Panic recovery to produce HTTP 500, customizable using RecoverHandler(...)
 - Route errors produce HTTP 404/405/406/415 errors, customizable using ServiceErrorHandler(...)
 - Configurable (trace) logging
 - Customizable gzip/deflate readers and writers using CompressorProvider registration
+- Inject your own http.Handler using the `HttpMiddlewareHandlerToFilter` function
 
 ## How to customize
 There are several hooks to customize the behavior of the go-restful package.
@@ -94,12 +95,12 @@ There are several hooks to customize the behavior of the go-restful package.
 - Trace logging
 - Compression
 - Encoders for other serializers
-- Use [jsoniter](https://github.com/json-iterator/go) by build this package using a tag, e.g. `go build -tags=jsoniter .`
-
-TODO: write examples of these.
+- Use [jsoniter](https://github.com/json-iterator/go) by building this package using a build tag, e.g. `go build -tags=jsoniter .` 
+- Use the package variable `TrimRightSlashEnabled` (default true) to control the behavior of matching routes that end with a slash `/` 
 
 ## Resources
 
+- [Example programs](./examples)
 - [Example posted on blog](http://ernestmicklei.com/2012/11/go-restful-first-working-example/)
 - [Design explained on blog](http://ernestmicklei.com/2012/11/go-restful-api-design/)
 - [sourcegraph](https://sourcegraph.com/github.com/emicklei/go-restful)
@@ -108,4 +109,4 @@ TODO: write examples of these.
 
 Type ```git shortlog -s``` for a full list of contributors.
 
-© 2012 - 2021, http://ernestmicklei.com. MIT License. Contributions are welcome.
+© 2012 - 2023, http://ernestmicklei.com. MIT License. Contributions are welcome.

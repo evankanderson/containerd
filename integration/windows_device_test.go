@@ -1,5 +1,4 @@
 //go:build windows
-// +build windows
 
 /*
    Copyright The containerd Authors.
@@ -26,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/containerd/containerd/v2/integration/images"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	runtime "k8s.io/cri-api/pkg/apis/runtime/v1"
@@ -41,7 +41,7 @@ func TestWindowsDevice(t *testing.T) {
 
 	var (
 		// TODO: An image with the device-dumper
-		testImage     = GetImage(BusyBox)
+		testImage     = images.Get(images.BusyBox)
 		containerName = "test-container"
 	)
 

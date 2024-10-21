@@ -1,16 +1,5 @@
 // Copyright The OpenTelemetry Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
 
 package otlptracegrpc // import "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 
@@ -22,13 +11,13 @@ import (
 	"google.golang.org/grpc/credentials"
 
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/otlp/internal/retry"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/internal/otlpconfig"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc/internal/otlpconfig"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc/internal/retry"
 )
 
 // Option applies an option to the gRPC driver.
 type Option interface {
-	applyGRPCOption(*otlpconfig.Config)
+	applyGRPCOption(otlpconfig.Config) otlpconfig.Config
 }
 
 func asGRPCOptions(opts []Option) []otlpconfig.GRPCOption {
@@ -50,8 +39,8 @@ type wrappedOption struct {
 	otlpconfig.GRPCOption
 }
 
-func (w wrappedOption) applyGRPCOption(cfg *otlpconfig.Config) {
-	w.ApplyGRPCOption(cfg)
+func (w wrappedOption) applyGRPCOption(cfg otlpconfig.Config) otlpconfig.Config {
+	return w.ApplyGRPCOption(cfg)
 }
 
 // WithInsecure disables client transport security for the exporter's gRPC
@@ -64,12 +53,48 @@ func WithInsecure() Option {
 	return wrappedOption{otlpconfig.WithInsecure()}
 }
 
-// WithEndpoint sets the target endpoint the exporter will connect to. If
-// unset, localhost:4317 will be used as a default.
+// WithEndpoint sets the target endpoint (host and port) the Exporter will
+// connect to. The provided endpoint should resemble "example.com:4317" (no
+// scheme or path).
+//
+// If the OTEL_EXPORTER_OTLP_ENDPOINT or OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+// environment variable is set, and this option is not passed, that variable
+// value will be used. If both environment variables are set,
+// OTEL_EXPORTER_OTLP_TRACES_ENDPOINT will take precedence. If an environment
+// variable is set, and this option is passed, this option will take precedence.
+//
+// If both this option and WithEndpointURL are used, the last used option will
+// take precedence.
+//
+// By default, if an environment variable is not set, and this option is not
+// passed, "localhost:4317" will be used.
 //
 // This option has no effect if WithGRPCConn is used.
 func WithEndpoint(endpoint string) Option {
 	return wrappedOption{otlpconfig.WithEndpoint(endpoint)}
+}
+
+// WithEndpointURL sets the target endpoint URL (scheme, host, port, path)
+// the Exporter will connect to. The provided endpoint URL should resemble
+// "https://example.com:4318/v1/traces".
+//
+// If the OTEL_EXPORTER_OTLP_ENDPOINT or OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+// environment variable is set, and this option is not passed, that variable
+// value will be used. If both environment variables are set,
+// OTEL_EXPORTER_OTLP_TRACES_ENDPOINT will take precedence. If an environment
+// variable is set, and this option is passed, this option will take precedence.
+//
+// If both this option and WithEndpoint are used, the last used option will
+// take precedence.
+//
+// If an invalid URL is provided, the default value will be kept.
+//
+// By default, if an environment variable is not set, and this option is not
+// passed, "https://localhost:4317/v1/traces" will be used.
+//
+// This option has no effect if WithGRPCConn is used.
+func WithEndpointURL(u string) Option {
+	return wrappedOption{otlpconfig.WithEndpointURL(u)}
 }
 
 // WithReconnectionPeriod set the minimum amount of time between connection
@@ -77,14 +102,14 @@ func WithEndpoint(endpoint string) Option {
 //
 // This option has no effect if WithGRPCConn is used.
 func WithReconnectionPeriod(rp time.Duration) Option {
-	return wrappedOption{otlpconfig.NewGRPCOption(func(cfg *otlpconfig.Config) {
+	return wrappedOption{otlpconfig.NewGRPCOption(func(cfg otlpconfig.Config) otlpconfig.Config {
 		cfg.ReconnectionPeriod = rp
+		return cfg
 	})}
 }
 
 func compressorToCompression(compressor string) otlpconfig.Compression {
-	switch compressor {
-	case "gzip":
+	if compressor == "gzip" {
 		return otlpconfig.GzipCompression
 	}
 
@@ -93,13 +118,7 @@ func compressorToCompression(compressor string) otlpconfig.Compression {
 }
 
 // WithCompressor sets the compressor for the gRPC client to use when sending
-// requests. It is the responsibility of the caller to ensure that the
-// compressor set has been registered with google.golang.org/grpc/encoding.
-// This can be done by encoding.RegisterCompressor. Some compressors
-// auto-register on import, such as gzip, which can be registered by calling
-// `import _ "google.golang.org/grpc/encoding/gzip"`.
-//
-// This option has no effect if WithGRPCConn is used.
+// requests. Supported compressor values: "gzip".
 func WithCompressor(compressor string) Option {
 	return wrappedOption{otlpconfig.WithCompression(compressorToCompression(compressor))}
 }
@@ -117,8 +136,9 @@ func WithHeaders(headers map[string]string) Option {
 //
 // This option has no effect if WithGRPCConn is used.
 func WithTLSCredentials(creds credentials.TransportCredentials) Option {
-	return wrappedOption{otlpconfig.NewGRPCOption(func(cfg *otlpconfig.Config) {
+	return wrappedOption{otlpconfig.NewGRPCOption(func(cfg otlpconfig.Config) otlpconfig.Config {
 		cfg.Traces.GRPCCredentials = creds
+		return cfg
 	})}
 }
 
@@ -126,8 +146,9 @@ func WithTLSCredentials(creds credentials.TransportCredentials) Option {
 //
 // This option has no effect if WithGRPCConn is used.
 func WithServiceConfig(serviceConfig string) Option {
-	return wrappedOption{otlpconfig.NewGRPCOption(func(cfg *otlpconfig.Config) {
+	return wrappedOption{otlpconfig.NewGRPCOption(func(cfg otlpconfig.Config) otlpconfig.Config {
 		cfg.ServiceConfig = serviceConfig
+		return cfg
 	})}
 }
 
@@ -135,11 +156,14 @@ func WithServiceConfig(serviceConfig string) Option {
 // connection. The options here are appended to the internal grpc.DialOptions
 // used so they will take precedence over any other internal grpc.DialOptions
 // they might conflict with.
+// The [grpc.WithBlock], [grpc.WithTimeout], and [grpc.WithReturnConnectionError]
+// grpc.DialOptions are ignored.
 //
 // This option has no effect if WithGRPCConn is used.
 func WithDialOption(opts ...grpc.DialOption) Option {
-	return wrappedOption{otlpconfig.NewGRPCOption(func(cfg *otlpconfig.Config) {
+	return wrappedOption{otlpconfig.NewGRPCOption(func(cfg otlpconfig.Config) otlpconfig.Config {
 		cfg.DialOptions = opts
+		return cfg
 	})}
 }
 
@@ -152,8 +176,9 @@ func WithDialOption(opts ...grpc.DialOption) Option {
 // It is the callers responsibility to close the passed conn. The client
 // Shutdown method will not close this connection.
 func WithGRPCConn(conn *grpc.ClientConn) Option {
-	return wrappedOption{otlpconfig.NewGRPCOption(func(cfg *otlpconfig.Config) {
+	return wrappedOption{otlpconfig.NewGRPCOption(func(cfg otlpconfig.Config) otlpconfig.Config {
 		cfg.GRPCConn = conn
+		return cfg
 	})}
 }
 

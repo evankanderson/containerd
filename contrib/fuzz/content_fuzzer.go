@@ -1,5 +1,4 @@
 //go:build gofuzz
-// +build gofuzz
 
 /*
    Copyright The containerd Authors.
@@ -14,7 +13,7 @@
    limitations under the License.
 */
 
-// nolint: golint
+//nolint:golint
 package fuzz
 
 import (
@@ -30,9 +29,9 @@ import (
 	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 
-	"github.com/containerd/containerd/content"
-	"github.com/containerd/containerd/content/local"
-	"github.com/containerd/containerd/images/archive"
+	"github.com/containerd/containerd/v2/core/content"
+	"github.com/containerd/containerd/v2/core/images/archive"
+	"github.com/containerd/containerd/v2/plugins/content/local"
 )
 
 // checkBlobPath performs some basic validation
@@ -40,7 +39,7 @@ func checkBlobPath(dgst digest.Digest, root string) error {
 	if err := dgst.Validate(); err != nil {
 		return err
 	}
-	path := filepath.Join(root, "blobs", dgst.Algorithm().String(), dgst.Hex())
+	path := filepath.Join(root, "blobs", dgst.Algorithm().String(), dgst.Encoded())
 	_, err := os.Stat(path)
 	if err != nil {
 		return err

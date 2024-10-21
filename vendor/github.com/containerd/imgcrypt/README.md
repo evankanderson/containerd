@@ -2,9 +2,9 @@
 
 Project `imgcrypt` is a non-core subproject of containerd.
 
-The `imgcrypt` library provides API exensions for containerd to support encrypted container images and implements
+The `imgcrypt` library provides API extensions for containerd to support encrypted container images and implements
 the `ctd-decoder` command line tool for use by containerd to decrypt encrypted container images. An extended version
-of containerd's `ctr` tool (`ctr-enc') with support for encrypting and decrypting container images is also provided.
+of containerd's `ctr` tool (`ctr-enc`) with support for encrypting and decrypting container images is also provided.
 
 `imgcrypt` relies on the [`ocicrypt`](https://github.com/containers/ocicrypt) library for crypto functions on image layers.
 
@@ -25,7 +25,8 @@ installation we use /tmp for directories. Also, we build containerd 1.3 from the
 
 ```
 # cat config.toml
-disable_plugins = ["cri"]
+version = 2
+disabled_plugins = ["io.containerd.grpc.v1.cri"]
 root = "/tmp/var/lib/containerd"
 state = "/tmp/run/containerd"
 [grpc]
@@ -36,6 +37,10 @@ state = "/tmp/run/containerd"
     [stream_processors."io.containerd.ocicrypt.decoder.v1.tar.gzip"]
         accepts = ["application/vnd.oci.image.layer.v1.tar+gzip+encrypted"]
         returns = "application/vnd.oci.image.layer.v1.tar+gzip"
+        path = "/usr/local/bin/ctd-decoder"
+    [stream_processors."io.containerd.ocicrypt.decoder.v1.tar.zstd"]
+        accepts = ["application/vnd.oci.image.layer.v1.tar+zstd+encrypted"]
+        returns = "application/vnd.oci.image.layer.v1.tar+zstd"
         path = "/usr/local/bin/ctd-decoder"
     [stream_processors."io.containerd.ocicrypt.decoder.v1.tar"]
         accepts = ["application/vnd.oci.image.layer.v1.tar+encrypted"]

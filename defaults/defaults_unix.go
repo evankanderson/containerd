@@ -1,5 +1,4 @@
 //go:build !windows && !darwin
-// +build !windows,!darwin
 
 /*
    Copyright The containerd Authors.
@@ -33,8 +32,6 @@ const (
 	// DefaultFIFODir is the default location used by client-side cio library
 	// to store FIFOs.
 	DefaultFIFODir = "/run/containerd/fifo"
-	// DefaultRuntime is the default linux runtime
-	DefaultRuntime = "io.containerd.runc.v2"
 	// DefaultConfigDir is the default location for config files.
 	DefaultConfigDir = "/etc/containerd"
 )
